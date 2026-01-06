@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2026 Personal Planner</title>
+    
+    <!-- PWA Metadata -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#4c1d95">
+    
+    <!-- Scripts & Styles -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Cinzel:wght@400;700;900&family=JetBrains+Mono:wght@500&display=swap');
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            -webkit-tap-highlight-color: transparent; 
+            overscroll-behavior-y: contain;
+            transition: all 0.4s ease;
+        }
+
+        .cinzel { font-family: 'Cinzel', serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .active-tap:active { transform: scale(0.96); transition: transform 0.1s; }
+        
+        /* Themes */
+        .theme-purple { background-color: #4c1d95; color: #fef3c7; }
+        .theme-green { background-color: #064e3b; color: #fef3c7; }
+        .theme-white { background-color: #f8fafc; color: #0f172a; }
+
+        .gold-glow { text-shadow: 0 0 20px rgba(254, 243, 199, 0.4); }
+
+        @keyframes rotate-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-divine { animation: rotate-slow 60s linear infinite; }
+
+        .passcode-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; opacity: 0.2; transition: all 0.2s; }
+        .passcode-dot.filled { opacity: 1; transform: scale(1.2); background: currentColor; }
+
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+
+        .app-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+        }
+
+        /* High Visibility AI Cards */
+        .ai-card-white {
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #1e293b !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .theme-white .app-card {
+            background: #ffffff;
+            border-color: #e2e8f0;
+            color: #0f172a;
+        }
+
+        /* Custom Date Picker Styling */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+        .theme-white input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0);
+        }
+    </style>
+</head>
+<body id="body-main" class="theme-purple">
+    <div id="root"></div>
+
+    <script type="module">
+        // Local Vault Sync setup
+        window.fb = { isAvailable: false };
+        window.dispatchEvent(new Event('fb-ready'));
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo } = React;
+
+        const MASTER_PASSCODE = "2501";
+        const LM_STUDIO_URL = "https://decrease-pull-kinda-broader.trycloudflare.com/v1";
+        const API_URL = "https://newport-motorcycles-heading-nights.trycloudflare.com";
+        const USER_ID = "master"; 
+
+        const CatholicCross = ({ className = "w-12 h-12" }) => (
+            <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="40" r="35" stroke="currentColor" strokeWidth="0.5" opacity="0.1" />
+                <path d="M20 40H80" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+                <path d="M50 10V90" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
+                <path d="M38 40H62M50 28V52" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.4"/>
+            </svg>
+        );
+
+        const Icon = ({ name, className = "w-5 h-5" }) => <i className={`fas fa-${name} ${className}`}></i>;
+
+        const App = () => {
+            const [isUnlocked, setIsUnlocked] = useState(() => sessionStorage.getItem('app_unlocked') === 'true');
+            const [passcode, setPasscode] = useState('');
+            const [isShaking, setIsShaking] = useState(false);
+            const [showCelebration, setShowCelebration] = useState(false);
+            const [isEditMode, setIsEditMode] = useState(false);
+            const [isWorkoutExpanded, setIsWorkoutExpanded] = useState(false);
+            const [streakUnlocked, setStreakUnlocked] = useState(false);
+            const [showHonestyGate, setShowHonestyGate] = useState(false);
+            const [theme, setTheme] = useState(() => localStorage.getItem('planner_theme') || 'purple');
+            const [spanishMode, setSpanishMode] = useState('general');
+            const [syncStatus, setSyncStatus] = useState('idle');
+
+            // --- DATE LOGIC ---
+            // Format YYYY-MM-DD for consistency
+            const getTodayString = () => {
+                const d = new Date();
+                return d.toISOString().split('T')[0];
+            };
+            
+            const [activeDate, setActiveDate] = useState(getTodayString());
+            
+            const weekdayName = useMemo(() => {
+                const d = new Date(activeDate + 'T12:00:00'); // Midday to avoid timezone shifts
+                return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
+            }, [activeDate]);
+
+            // Persisted Data
+            const [completedTasks, setCompletedTasks] = useState({});
+            const [completedWorkouts, setCompletedWorkouts] = useState({});
+            const [waterIntake, setWaterIntake] = useState({});
+            const [stats, setStats] = useState({ streak: 0, lastCompletedDay: '' });
+            const [customSchedules, setCustomSchedules] = useState({});
+            const [customWorkouts, setCustomWorkouts] = useState({});
+
+            // Current AI Content
+            const [aiDevotional, setAiDevotional] = useState(null);
+            const [aiBusiness, setAiBusiness] = useState(null);
+            const [aiSpanish, setAiSpanish] = useState(null);
+
+            const defaultScheduleConfig = {
+                'Monday': { morning: 'early', theme: 'Resilience', business: 'Operations' },
+                'Tuesday': { morning: 'late', theme: 'Charity', business: 'Leadership' },
+                'Wednesday': { morning: 'early', theme: 'Patience', business: 'Strategy' },
+                'Thursday': { morning: 'early', theme: 'Fortitude', business: 'Product' },
+                'Friday': { morning: 'late', theme: 'Sacrifice', business: 'Audit' },
+                'Saturday': { morning: 'early', theme: 'Preparation', business: 'Legacy' },
+                'Sunday': { morning: 'sunday', theme: 'Gratitude', business: 'Spiritual' }
+            };
+
+            const defaultWorkoutConfig = {
+                'Monday': { title: 'Heavy Power: Hinge Focus', list: ["Barbell Hip Thrusts: 4x10", "RDLs: 3x12", "Cable Kickbacks: 3x15", "Seated Leg Curls: 3x12"] },
+                'Tuesday': { title: 'Upper Body: Posture', list: ["Lat Pulldowns: 3x12", "Incline DB Press: 3x12", "Cable Rows: 3x12", "Bicep Curls: 3x15"] },
+                'Wednesday': { title: 'Glute Power', list: ["Goblet Squats: 3x12", "Bulgarian Split Squats: 3x10", "Step-Ups: 3x10", "Walking Lunges: 20 steps"] },
+                'Thursday': { title: 'Arms & Core Sculpt', list: ["Shoulder Press: 3x12", "Lateral Raises: 3x15", "Tricep Extension: 3x12", "Plank: 3x60s"] },
+                'Friday': { title: 'Reflective Pump', list: ["Glute Bridges: 3x20", "Band Walks: 3x20", "Hyperextensions: 3x15", "Abduction: 3x20"] },
+                'Saturday': { title: 'Active Recovery', list: ["30min Walking", "Full Body Stretching", "Joint Mobility Flow"] },
+                'Sunday': { title: 'Rest & Renewal', list: ["Liturgical Service", "Family Reflection", "Spiritual Reading"] }
+            };
+
+            const getDaySchedule = useCallback((weekday) => {
+                if (customSchedules[weekday]) return customSchedules[weekday];
+                const cfg = defaultScheduleConfig[weekday] || defaultScheduleConfig['Monday'];
+                const morningItems = cfg.morning === 'early' 
+                    ? [{ t: '05:45', n: 'Morning Prayer' }, { t: '06:05', n: 'Workout' }, { t: '07:35', n: 'Preparation' }, { t: '08:05', n: 'Liturgical Prayer' }]
+                    : (cfg.morning === 'late' 
+                        ? [{ t: '06:30', n: 'Morning Prayer' }, { t: '07:05', n: 'Walk/Stretch' }, { t: '08:05', n: 'Liturgical Prayer' }]
+                        : [{ t: '07:15', n: 'Mass/Morning Prayer' }, { t: '08:45', n: 'Family Fellowship' }]);
+                
+                return [
+                    { title: 'Morning', icon: 'sun', color: 'text-orange-400', items: morningItems },
+                    { title: 'Focus', icon: 'briefcase', color: 'text-blue-400', items: [{ t: '08:45-14:00', n: weekday === 'Sunday' ? 'Day of Rest' : 'Core Focus Sessions' }] },
+                    { title: 'Growth', icon: 'book-open', color: 'text-emerald-400', items: [{ t: '14:15', n: 'Language/Spanish' }, { t: '15:00', n: 'Professional Skill' }] },
+                    { title: 'Evening', icon: 'moon', color: 'text-indigo-400', items: [{ t: '19:00', n: 'Evening Prayer' }, { t: '21:30', n: 'Examen & Rest' }] }
+                ];
+            }, [customSchedules]);
+
+            // --- DATA PERSISTENCE ---
+
+            const saveData = async (updates) => {
+                setSyncStatus('syncing');
+                const localKey = `planner_${USER_ID}_backup`;
+                const currentLocal = JSON.parse(localStorage.getItem(localKey) || '{}');
+                const merged = { ...currentLocal, ...updates };
+                localStorage.setItem(localKey, JSON.stringify(merged));
+
+                try {
+                    await fetch(`${API_URL}/save`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: USER_ID, updates: updates })
+                    });
+                    setSyncStatus('success');
+                    setTimeout(() => setSyncStatus('idle'), 2000);
+                } catch (e) {
+                    setSyncStatus('error');
+                }
+            };
+
+            const loadFromHomeVault = useCallback(async () => {
+                setSyncStatus('syncing');
+                try {
+                    const response = await fetch(`${API_URL}/load/${USER_ID}`);
+                    const d = await response.json();
+                    if (d && Object.keys(d).length > 0) {
+                        setCompletedTasks(d.tasks || {});
+                        setCompletedWorkouts(d.completedWorkouts || {});
+                        setWaterIntake(d.water || {});
+                        setStats(d.stats || { streak: 0, lastCompletedDay: '' });
+                        setCustomSchedules(d.customSchedules || {});
+                        setCustomWorkouts(d.customWorkouts || {});
+                        setSyncStatus('success');
+                    }
+                    setTimeout(() => setSyncStatus('idle'), 2000);
+                } catch (e) {
+                    setSyncStatus('error');
+                    const localKey = `planner_${USER_ID}_backup`;
+                    const d = JSON.parse(localStorage.getItem(localKey) || '{}');
+                    setCompletedTasks(d.tasks || {});
+                    setCompletedWorkouts(d.completedWorkouts || {});
+                    setWaterIntake(d.water || {});
+                    setStats(d.stats || { streak: 0, lastCompletedDay: '' });
+                }
+            }, []);
+
+            useEffect(() => { if (isUnlocked) loadFromHomeVault(); }, [isUnlocked, loadFromHomeVault]);
+
+            // AI Logic
+            const callLMStudio = async (prompt, system) => {
+                try {
+                    const response = await fetch(`${LM_STUDIO_URL}/chat/completions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: "openai/gpt-oss-20b",
+                            messages: [{ role: "system", content: system + " Respond raw JSON." }, { role: "user", content: prompt }],
+                            temperature: 0.8
+                        })
+                    });
+                    const data = await response.json();
+                    return JSON.parse(data.choices[0].message.content.replace(/```json|```/g, "").trim());
+                } catch (e) { return null; }
+            };
+
+            const handleGenerateNow = async (type) => {
+                const currentDayTheme = defaultScheduleConfig[weekdayName]?.theme;
+                const bizArea = defaultScheduleConfig[weekdayName]?.business;
+                let prompt, system;
+
+                if (type === 'devotional') {
+                    setAiDevotional({ loading: true });
+                    prompt = `Provide a 2-line maximum Catholic Bible devotional for theme ${currentDayTheme}. JSON: {"devotional": "text", "focus": "cite"}`;
+                    system = "Catholic theological guide.";
+                } else if (type === 'business') {
+                    setAiBusiness({ loading: true });
+                    prompt = `Provide a 2-line maximum leadership tip for ${bizArea}. JSON: {"advice": "text", "focus": "priority"}`;
+                    system = "Executive coach.";
+                } else if (type === 'spanish') {
+                    setAiSpanish({ loading: true });
+                    prompt = `Spanish phrase. JSON: {"phrase": "Spanish", "trans": "English", "usage": "Context"}`;
+                    system = "Spanish tutor.";
+                }
+
+                const res = await callLMStudio(prompt, system);
+                if (res) {
+                    if (type === 'devotional') setAiDevotional(res);
+                    else if (type === 'business') setAiBusiness(res);
+                    else if (type === 'spanish') setAiSpanish(res);
+                } else {
+                    if (type === 'devotional') setAiDevotional(null);
+                    else if (type === 'business') setAiBusiness(null);
+                    else if (type === 'spanish') setAiSpanish(null);
+                }
+            };
+
+            useEffect(() => {
+                if (isUnlocked) {
+                    handleGenerateNow('devotional');
+                    handleGenerateNow('business');
+                    handleGenerateNow('spanish');
+                }
+            }, [isUnlocked, activeDate]);
+
+            // Logic Handlers
+            const toggleTask = (key) => {
+                if (isEditMode) return;
+                const fullKey = `${activeDate}-${key}`;
+                const next = { ...completedTasks, [fullKey]: !completedTasks[fullKey] };
+                setCompletedTasks(next);
+                
+                const sched = getDaySchedule(weekdayName);
+                let allDone = true;
+                sched.forEach((s, si) => s.items.forEach((_, ii) => {
+                    if (!next[`${activeDate}-${si}-${ii}`]) allDone = false;
+                }));
+
+                let newStats = { ...stats };
+                if (allDone && stats.lastCompletedDay !== activeDate) {
+                    newStats.streak += 1;
+                    newStats.lastCompletedDay = activeDate;
+                    setStats(newStats);
+                    setShowCelebration(true);
+                }
+                saveData({ tasks: next, stats: newStats });
+            };
+
+            const toggleWorkoutItem = (idx) => {
+                if (isEditMode) return;
+                const key = `${activeDate}-workout-${idx}`;
+                const next = { ...completedWorkouts, [key]: !completedWorkouts[key] };
+                setCompletedWorkouts(next);
+                saveData({ completedWorkouts: next });
+            };
+
+            const setWater = (count) => {
+                const next = { ...waterIntake, [activeDate]: count };
+                setWaterIntake(next);
+                saveData({ water: next });
+            };
+
+            const handlePasscode = (n) => {
+                if (passcode.length < 4) {
+                    const next = passcode + n;
+                    setPasscode(next);
+                    if (next === MASTER_PASSCODE) {
+                        setTimeout(() => { setIsUnlocked(true); sessionStorage.setItem('app_unlocked', 'true'); }, 200);
+                    } else if (next.length === 4) {
+                        setIsShaking(true);
+                        setTimeout(() => { setPasscode(''); setIsShaking(false); }, 400);
+                    }
+                }
+            };
+
+            const navigateDate = (offset) => {
+                const current = new Date(activeDate + 'T12:00:00');
+                current.setDate(current.getDate() + offset);
+                setActiveDate(current.toISOString().split('T')[0]);
+            };
+
+            const updateSchedule = (si, ii, field, val) => {
+                const current = getDaySchedule(weekdayName);
+                const updated = [...current];
+                updated[si].items[ii][field] = val;
+                const newCustom = { ...customSchedules, [weekdayName]: updated };
+                setCustomSchedules(newCustom);
+                saveData({ customSchedules: newCustom });
+            };
+
+            const updateWorkout = (idx, val) => {
+                const current = customWorkouts[weekdayName] || defaultWorkoutConfig[weekdayName];
+                const newList = [...current.list];
+                newList[idx] = val;
+                const newCustom = { ...customWorkouts, [weekdayName]: { ...current, list: newList } };
+                setCustomWorkouts(newCustom);
+                saveData({ customWorkouts: newCustom });
+            };
+
+            const updateStreakManual = (val) => {
+                const num = parseInt(val) || 0;
+                const newStats = { ...stats, streak: num };
+                setStats(newStats);
+                saveData({ stats: newStats });
+            };
+
+            useEffect(() => {
+                document.body.className = `theme-${theme}`;
+                localStorage.setItem('planner_theme', theme);
+            }, [theme]);
+
+            if (!isUnlocked) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[#4c1d95] text-amber-50">
+                        <CatholicCross className="w-20 h-20 mb-8 text-amber-400 opacity-80" />
+                        <h1 className="cinzel text-2xl font-bold tracking-widest uppercase mb-10">Planner 2026</h1>
+                        <div className={`flex gap-5 mb-12 ${isShaking ? 'shake' : ''}`}>
+                            {[0,1,2,3].map(i => <div key={i} className={`passcode-dot ${passcode.length > i ? 'filled' : ''}`} />)}
+                        </div>
+                        <div className="grid grid-cols-3 gap-6 max-w-xs">
+                            {[1,2,3,4,5,6,7,8,9].map(n => (
+                                <button key={n} onClick={() => handlePasscode(n)} className="w-16 h-16 rounded-full bg-white/5 border border-white/10 text-xl font-bold active-tap">{n}</button>
+                            ))}
+                            <div />
+                            <button onClick={() => handlePasscode(0)} className="w-16 h-16 rounded-full bg-white/5 border border-white/10 text-xl font-bold active-tap">0</button>
+                            <button onClick={() => setPasscode(passcode.slice(0,-1))} className="w-16 h-16 flex items-center justify-center text-amber-400 active-tap"><Icon name="backspace" /></button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (showCelebration) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center bg-indigo-950 p-8 text-center text-white overflow-hidden relative">
+                        <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+                            <div className="w-[800px] h-[800px] bg-[conic-gradient(from_0deg,transparent,white,transparent)] animate-divine"></div>
+                        </div>
+                        <CatholicCross className="w-32 h-32 text-amber-400 mb-8 relative" />
+                        <h2 className="cinzel text-4xl font-black text-amber-50 mb-4 gold-glow">Te Deum Laudamus</h2>
+                        <p className="text-amber-300/40 uppercase tracking-[0.4em] text-[10px] mb-12 italic">The stewardship of the day is complete.</p>
+                        <div className="bg-white/5 border border-white/10 p-12 rounded-[4rem] backdrop-blur-xl mb-12">
+                            <span className="cinzel text-8xl font-black text-amber-400 block mb-2">{stats.streak}</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Day Streak</span>
+                        </div>
+                        <button onClick={() => setShowCelebration(false)} className="bg-amber-400 text-indigo-950 px-12 py-5 rounded-full font-black cinzel uppercase tracking-widest active-tap relative z-10 shadow-2xl">Return</button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="max-w-4xl mx-auto px-6 py-12 safe-bottom">
+                    <header className="flex flex-col md:flex-row justify-between items-center gap-8 mb-12">
+                        <div className="flex items-center gap-5">
+                            <div className="p-4 bg-white/5 rounded-2xl border border-white/10 app-card">
+                                <CatholicCross className="w-8 h-8 text-amber-400" />
+                            </div>
+                            <div className="text-left">
+                                <h1 className="cinzel text-2xl font-black tracking-tight uppercase gold-glow">Planner 2026</h1>
+                                <div className="flex items-center gap-2 mt-1 opacity-60">
+                                    <Icon name="fire" className="text-orange-500 text-xs" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest">{stats.streak} Day Consecution</span>
+                                    {syncStatus !== 'idle' && <span className={`text-[8px] uppercase tracking-widest ml-2 ${syncStatus === 'error' ? 'text-red-400' : 'text-blue-400 animate-pulse'}`}>{syncStatus}</span>}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Date Picker Section */}
+                        <div className="flex items-center gap-4 bg-white/5 p-2 rounded-2xl border border-white/10">
+                            <button onClick={() => navigateDate(-1)} className="w-10 h-10 flex items-center justify-center opacity-40 hover:opacity-100"><Icon name="chevron-left" /></button>
+                            <div className="flex flex-col items-center px-4">
+                                <input 
+                                    type="date" 
+                                    value={activeDate} 
+                                    onChange={(e) => setActiveDate(e.target.value)}
+                                    className="bg-transparent cinzel font-bold text-sm uppercase text-center outline-none cursor-pointer"
+                                />
+                                <span className="text-[9px] uppercase tracking-[0.2em] opacity-40 mt-1">{weekdayName}</span>
+                            </div>
+                            <button onClick={() => navigateDate(1)} className="w-10 h-10 flex items-center justify-center opacity-40 hover:opacity-100"><Icon name="chevron-right" /></button>
+                            <button onClick={() => setActiveDate(getTodayString())} className="px-3 py-1 bg-amber-400 text-indigo-950 rounded-lg text-[9px] font-black uppercase ml-2">Today</button>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={() => { setIsEditMode(!isEditMode); setStreakUnlocked(false); setShowHonestyGate(false); }} className={`w-12 h-12 rounded-2xl border flex items-center justify-center active-tap transition-all ${isEditMode ? 'bg-amber-400 text-indigo-950 shadow-lg' : 'bg-white/5 border-white/10 opacity-60'}`}>
+                                <Icon name={isEditMode ? "check" : "pencil"} />
+                            </button>
+                            <button onClick={() => setTheme(theme === 'purple' ? 'green' : theme === 'green' ? 'white' : 'purple')} className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center active-tap opacity-60"><Icon name="palette" /></button>
+                            <button onClick={() => { setIsUnlocked(false); sessionStorage.removeItem('app_unlocked'); }} className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 text-amber-400 flex items-center justify-center active-tap opacity-60"><Icon name="lock" /></button>
+                        </div>
+                    </header>
+
+                    {isEditMode && (
+                        <div className="mb-12 space-y-4 animate-in fade-in slide-in-from-top-4">
+                            <div className="app-card p-8 rounded-[3rem] text-left border border-amber-400/20">
+                                <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-400 cinzel mb-4 flex items-center gap-2"><Icon name="flame" className="w-4 h-4" /> Stewardship Statistics</h3>
+                                {!streakUnlocked && !showHonestyGate ? (
+                                    <button onClick={() => setShowHonestyGate(true)} className="w-full p-4 bg-amber-400/10 text-amber-400 font-bold rounded-2xl border border-amber-400/20 text-[10px] uppercase tracking-widest">Verify Integrity to Edit Streak</button>
+                                ) : showHonestyGate ? (
+                                    <div className={`p-6 bg-white/5 rounded-3xl ${isShaking ? 'shake' : ''}`}>
+                                        <p className="text-[11px] font-black uppercase text-amber-50 mb-4 tracking-widest text-center italic">Which Apostle authored the First Gospel?</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {["Matthew", "Thomas", "Paul", "Barnabas"].map(name => (
+                                                <button key={name} onClick={() => { if(name === "Matthew") { setStreakUnlocked(true); setShowHonestyGate(false); } else { setIsShaking(true); setTimeout(()=>setIsShaking(false),400); } }} className="p-3 bg-white/5 rounded-xl border border-white/10 text-[10px] font-black uppercase hover:bg-amber-400 hover:text-indigo-950">{name}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black uppercase opacity-40 block">Current Streak (Days)</label>
+                                        <input type="number" value={stats.streak} onChange={(e) => updateStreakManual(e.target.value)} className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl font-black text-amber-400 text-2xl outline-none" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                        {/* Devotional Card */}
+                        <div className="ai-card-white p-8 rounded-[2.5rem] flex flex-col justify-between min-h-[240px] text-left">
+                            <div>
+                                <div className="flex justify-between items-center mb-6">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 cinzel">Catholic Devotional</span>
+                                    <button onClick={() => handleGenerateNow('devotional')} className="text-indigo-300 hover:text-indigo-600"><Icon name="bolt" className="text-xs" /></button>
+                                </div>
+                                {aiDevotional?.loading ? (
+                                    <p className="text-xs animate-pulse italic text-indigo-400">Seeking divine inspiration...</p>
+                                ) : aiDevotional ? (
+                                    <div className="animate-in fade-in">
+                                        <p className="text-sm font-medium italic leading-relaxed mb-4 text-slate-700">"{aiDevotional.devotional}"</p>
+                                        <span className="text-[9px] font-bold uppercase p-2 bg-indigo-50 text-indigo-600 rounded-lg">{aiDevotional.focus}</span>
+                                    </div>
+                                ) : <p className="text-xs opacity-40 italic">Awaiting theological reflection...</p>}
+                            </div>
+                        </div>
+
+                        {/* Executive Card */}
+                        <div className="ai-card-white p-8 rounded-[2.5rem] flex flex-col justify-between min-h-[240px] text-left">
+                            <div>
+                                <div className="flex justify-between items-center mb-6">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 cinzel">Executive Tip</span>
+                                    <button onClick={() => handleGenerateNow('business')} className="text-blue-300 hover:text-blue-600"><Icon name="bolt" className="text-xs" /></button>
+                                </div>
+                                {aiBusiness?.loading ? (
+                                    <p className="text-xs animate-pulse italic text-blue-400">Strategizing legacy...</p>
+                                ) : aiBusiness ? (
+                                    <div className="animate-in fade-in">
+                                        <p className="text-sm font-bold leading-snug mb-4 text-slate-800">{aiBusiness.advice}</p>
+                                        <span className="text-[9px] font-bold uppercase p-2 bg-blue-50 text-blue-600 rounded-lg">{aiBusiness.focus}</span>
+                                    </div>
+                                ) : <p className="text-xs opacity-40 italic">Awaiting executive strategy...</p>}
+                            </div>
+                        </div>
+
+                        {/* Spanish Card */}
+                        <div className="ai-card-white p-8 rounded-[2.5rem] flex flex-col justify-between min-h-[240px] text-left relative overflow-hidden">
+                            <div>
+                                <div className="flex justify-between items-center mb-4">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 cinzel">Spanish Study</span>
+                                    <button onClick={() => handleGenerateNow('spanish')} className="text-emerald-300 hover:text-emerald-600"><Icon name="bolt" className="text-xs" /></button>
+                                </div>
+                                <div className="flex bg-slate-100 p-1 rounded-xl mb-6 self-start inline-flex">
+                                    <button onClick={() => setSpanishMode('general')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${spanishMode === 'general' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>General</button>
+                                    <button onClick={() => setSpanishMode('religious')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${spanishMode === 'religious' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Religion</button>
+                                </div>
+                                {aiSpanish?.loading ? (
+                                    <p className="text-xs animate-pulse italic text-emerald-400">Translating wisdom...</p>
+                                ) : aiSpanish ? (
+                                    <div className="animate-in fade-in">
+                                        <p className="text-xl font-black mb-1 text-slate-900 leading-tight">"{aiSpanish.phrase}"</p>
+                                        <p className="text-[10px] font-bold uppercase text-emerald-600 mb-3">{aiSpanish.trans}</p>
+                                        <p className="text-[9px] italic leading-tight text-slate-500">Context: {aiSpanish.usage}</p>
+                                    </div>
+                                ) : <p className="text-xs opacity-40 italic">Select mode and generate...</p>}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-12">
+                        {getDaySchedule(weekdayName).map((section, si) => (
+                            <section key={si} className="text-left">
+                                <div className="flex items-center gap-4 mb-8">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center bg-white/5 ${section.color}`}><Icon name={section.icon} /></div>
+                                    <h2 className="cinzel font-black text-sm tracking-[0.3em] uppercase opacity-60">{section.title}</h2>
+                                </div>
+                                <div className="grid gap-4">
+                                    {section.items.map((item, ii) => {
+                                        const key = `${si}-${ii}`;
+                                        const done = !!completedTasks[`${activeDate}-${key}`];
+                                        return (
+                                            <div key={ii} onClick={() => toggleTask(key)} className={`p-6 rounded-[2rem] border transition-all flex items-center justify-between ${done ? 'bg-emerald-500/10 border-emerald-500/20 opacity-40 shadow-inner' : 'bg-white/5 border-white/10'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active-tap'}`}>
+                                                <div className="flex items-center gap-6 flex-1">
+                                                    {isEditMode ? (
+                                                        <>
+                                                            <input type="text" value={item.t} onChange={(e) => updateSchedule(si, ii, 't', e.target.value)} className="bg-white/10 border border-white/10 rounded px-2 py-1 mono text-[10px] w-16" />
+                                                            <input type="text" value={item.n} onChange={(e) => updateSchedule(si, ii, 'n', e.target.value)} className="bg-white/10 border border-white/10 rounded px-2 py-1 text-sm font-bold w-full" />
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span className="mono text-[10px] opacity-30 font-bold">{item.t}</span>
+                                                            <span className={`text-sm font-bold tracking-tight ${done ? 'line-through' : ''}`}>{item.n}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                {!isEditMode && <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${done ? 'bg-emerald-500 border-emerald-500 shadow-lg' : 'border-white/10'}`}>{done && <Icon name="check" className="text-white text-[11px]" />}</div>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+                        ))}
+                    </div>
+
+                    <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className={`md:col-span-2 bg-white/5 border border-white/10 p-10 rounded-[3.5rem] text-left app-card transition-all duration-300 ${(!isWorkoutExpanded && !isEditMode) ? 'cursor-pointer hover:bg-white/10' : ''}`} onClick={() => (!isWorkoutExpanded && !isEditMode) && setIsWorkoutExpanded(true)}>
+                            <div className="flex items-center justify-between mb-8">
+                                <div className="flex items-center gap-4">
+                                    <Icon name="dumbbell" className="text-amber-400" />
+                                    {isEditMode ? (
+                                        <input type="text" value={customWorkouts[weekdayName]?.title || defaultWorkoutConfig[weekdayName].title} onChange={(e) => { const up = { ...customWorkouts, [weekdayName]: { ...(customWorkouts[weekdayName] || defaultWorkoutConfig[weekdayName]), title: e.target.value } }; setCustomWorkouts(up); saveData({ customWorkouts: up }); }} className="bg-white/10 border border-white/10 rounded px-3 py-1 cinzel font-black text-sm uppercase tracking-widest w-full" />
+                                    ) : <h3 className="cinzel font-black text-sm uppercase tracking-widest italic opacity-80">{(customWorkouts[weekdayName]?.title || defaultWorkoutConfig[weekdayName].title)}</h3>}
+                                </div>
+                                {!isEditMode && <button onClick={(e) => { e.stopPropagation(); setIsWorkoutExpanded(!isWorkoutExpanded); }} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-40"><Icon name={isWorkoutExpanded ? "chevron-up" : "chevron-down"} /></button>}
+                            </div>
+                            {(isWorkoutExpanded || isEditMode) ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                    {(customWorkouts[weekdayName]?.list || defaultWorkoutConfig[weekdayName].list).map((ex, i) => {
+                                        const key = `${activeDate}-workout-${i}`;
+                                        const isWorkoutDone = !!completedWorkouts[key];
+                                        return (
+                                            <div key={i} onClick={() => toggleWorkoutItem(i)} className={`flex items-center justify-between p-5 rounded-3xl border transition-all ${isWorkoutDone ? 'bg-emerald-500/10 border-emerald-500/20 opacity-40' : 'bg-white/5 border-white/10'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active-tap'}`}>
+                                                <div className="flex items-center gap-4 flex-1">
+                                                    <div className="w-6 h-6 rounded-lg bg-amber-400/10 text-amber-400 flex items-center justify-center text-[9px] font-black">{i+1}</div>
+                                                    {isEditMode ? <input type="text" value={ex} onChange={(e) => updateWorkout(i, e.target.value)} className="bg-transparent text-[11px] font-bold w-full" /> : <span className={`text-[11px] font-bold opacity-70 ${isWorkoutDone ? 'line-through' : ''}`}>{ex}</span>}
+                                                </div>
+                                                {!isEditMode && <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isWorkoutDone ? 'bg-emerald-500 border-emerald-500' : 'border-white/10'}`}>{isWorkoutDone && <Icon name="check" className="text-white text-[8px]" />}</div>}
+                                            </div>
+                                        );
+                                    })}
+                                    {isEditMode && <button onClick={addWorkoutExercise} className="flex items-center justify-center gap-3 p-5 rounded-3xl border border-dashed border-white/20 text-[9px] font-black uppercase text-amber-400"><Icon name="plus" /> Add Exercise</button>}
+                                </div>
+                            ) : <p className="text-[10px] opacity-30 italic uppercase tracking-widest">Click to view exercises</p>}
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 p-10 rounded-[3.5rem] text-left app-card">
+                            <div className="flex items-center gap-4 mb-8"><Icon name="droplet" className="text-blue-400" /><h3 className="cinzel font-black text-sm uppercase tracking-widest opacity-80">Hydration</h3></div>
+                            <div className="flex flex-wrap gap-4 mb-8">
+                                {[1,2,3,4,5,6].map(i => (
+                                    <button key={i} onClick={() => setWater(i)} className={`w-12 h-12 rounded-2xl border flex items-center justify-center active-tap transition-all ${waterIntake[activeDate] >= i ? 'bg-blue-500 border-blue-500 shadow-lg' : 'bg-white/5 border-white/10 opacity-30'}`}><Icon name="droplet" className="text-xs" /></button>
+                                ))}
+                            </div>
+                            <div className="text-left mt-4"><p className="text-3xl font-black cinzel leading-none">{(waterIntake[activeDate] || 0) * 16} <span className="text-xs opacity-40 uppercase">oz</span></p><p className="text-[10px] font-black uppercase tracking-widest opacity-30 mt-2 italic">Goal: 96oz</p></div>
+                        </div>
+                    </div>
+
+                    <footer className="mt-20 pt-10 border-t border-white/5 flex flex-col items-center opacity-20">
+                        <CatholicCross className="w-6 h-6 mb-3" />
+                        <span className="text-[8px] font-black uppercase tracking-[0.5em] mono">Anno Domini 2026 | Planner</span>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
