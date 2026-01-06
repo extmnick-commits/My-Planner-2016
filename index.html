@@ -20,12 +20,12 @@ import {
   RotateCcw,
   Sparkles,
   Zap,
-  Delete
+  Delete,
+  Trash2
 } from 'lucide-react';
 
 // --- Configuration ---
 const MASTER_PASSCODE = "2501";
-// RESTORED: Your personal server configuration
 const LM_STUDIO_URL = "https://decrease-pull-kinda-broader.trycloudflare.com/v1";
 const API_URL = "https://newport-motorcycles-heading-nights.trycloudflare.com";
 const USER_ID = "master"; 
@@ -128,7 +128,7 @@ const App = () => {
     return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(d);
   }, [activeDate]);
 
-  // --- Data Persistence (RESTORED API LOGIC) ---
+  // --- Data Persistence ---
   const [completedTasks, setCompletedTasks] = useState({});
   const [completedWorkouts, setCompletedWorkouts] = useState({});
   const [waterIntake, setWaterIntake] = useState({});
@@ -149,7 +149,7 @@ const App = () => {
   const [aiBusiness, setAiBusiness] = useState(null);
   const [aiSpanish, setAiSpanish] = useState(null);
 
-  // RESTORED: API Save Function
+  // API Save Function
   const saveData = async (updates) => {
     setSyncStatus('syncing');
     const localKey = `planner_${USER_ID}_backup`;
@@ -173,7 +173,7 @@ const App = () => {
     }
   };
 
-  // RESTORED: API Load Function
+  // API Load Function
   const loadFromHomeVault = useCallback(async () => {
     setSyncStatus('syncing');
     try {
@@ -205,7 +205,7 @@ const App = () => {
       if (isUnlocked) loadFromHomeVault(); 
   }, [isUnlocked, loadFromHomeVault]);
 
-  // RESTORED: LM Studio Logic
+  // LM Studio Logic
   const callLMStudio = async (prompt, system) => {
     try {
         const response = await fetch(`${LM_STUDIO_URL}/chat/completions`, {
@@ -218,7 +218,6 @@ const App = () => {
             })
         });
         const data = await response.json();
-        // Parse the JSON from the content string
         return JSON.parse(data.choices[0].message.content.replace(/```json|```/g, "").trim());
     } catch (e) { 
         console.error("AI Generation failed", e);
@@ -252,14 +251,12 @@ const App = () => {
         else if (type === 'business') setAiBusiness(res);
         else if (type === 'spanish') setAiSpanish(res);
     } else {
-        // Reset loading state on error
         if (type === 'devotional') setAiDevotional(null);
         else if (type === 'business') setAiBusiness(null);
         else if (type === 'spanish') setAiSpanish(null);
     }
   };
 
-  // Trigger AI on unlock
   useEffect(() => {
     if (isUnlocked) {
         handleGenerateNow('devotional');
@@ -290,7 +287,12 @@ const App = () => {
   };
 
   const getDaySchedule = useCallback((weekday) => {
-    if (customSchedules[weekday]) return customSchedules[weekday];
+    // CRITICAL FIX: Ensure custom schedule is actually an array before returning it
+    // This prevents crashes if local storage has malformed data from previous versions
+    if (customSchedules[weekday] && Array.isArray(customSchedules[weekday])) {
+        return customSchedules[weekday];
+    }
+    
     const cfg = defaultScheduleConfig[weekday] || defaultScheduleConfig['Monday'];
     const morningItems = cfg.morning === 'early' 
         ? [{ t: '05:45', n: 'Morning Prayer' }, { t: '06:05', n: 'Workout' }, { t: '07:35', n: 'Preparation' }, { t: '08:05', n: 'Liturgical Prayer' }]
@@ -314,7 +316,6 @@ const App = () => {
     const next = { ...completedTasks, [fullKey]: !completedTasks[fullKey] };
     setCompletedTasks(next);
     
-    // Check daily completion for streak
     const sched = getDaySchedule(weekdayName);
     let allDone = true;
     sched.forEach((s, si) => s.items.forEach((_, ii) => {
@@ -340,7 +341,6 @@ const App = () => {
   const updateSchedule = (si, ii, field, val) => {
     const currentSchedule = getDaySchedule(weekdayName);
     
-    // Deep copy and update to avoid direct state mutation
     const newSchedule = currentSchedule.map((section, sectionIndex) => {
         if (sectionIndex !== si) return section;
         return {
@@ -359,7 +359,9 @@ const App = () => {
 
   const updateWorkout = (idx, val) => {
     const current = customWorkouts[weekdayName] || defaultWorkoutConfig[weekdayName];
-    const newList = [...current.list];
+    // Safety check for list
+    const safeList = Array.isArray(current.list) ? current.list : [];
+    const newList = [...safeList];
     newList[idx] = val;
     const newCustom = { ...customWorkouts, [weekdayName]: { ...current, list: newList } };
     setCustomWorkouts(newCustom);
@@ -368,7 +370,8 @@ const App = () => {
 
   const addWorkoutExercise = () => {
     const current = customWorkouts[weekdayName] || defaultWorkoutConfig[weekdayName];
-    const newList = [...current.list, "New Exercise: 3x10"];
+    const safeList = Array.isArray(current.list) ? current.list : [];
+    const newList = [...safeList, "New Exercise: 3x10"];
     const newCustom = { ...customWorkouts, [weekdayName]: { ...current, list: newList } };
     setCustomWorkouts(newCustom);
     saveData({ customWorkouts: newCustom });
@@ -381,7 +384,6 @@ const App = () => {
     saveData({ stats: newStats });
   };
 
-  // Re-added missing helper functions
   const toggleWorkoutItem = (idx) => {
     if (isEditMode) return;
     const key = `${activeDate}-workout-${idx}`;
@@ -409,6 +411,13 @@ const App = () => {
     }
   };
 
+  const wipeData = () => {
+    if(confirm("Are you sure you want to completely reset all data? This cannot be undone.")) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  };
+
   useEffect(() => {
     localStorage.setItem('planner_theme', theme);
   }, [theme]);
@@ -432,6 +441,8 @@ const App = () => {
                 <button onClick={() => handlePasscode(0)} className="w-16 h-16 rounded-full bg-white/5 border border-white/10 text-xl font-bold active-tap">0</button>
                 <button onClick={() => setPasscode(passcode.slice(0,-1))} className="w-16 h-16 flex items-center justify-center text-amber-400 active-tap"><Delete className="w-6 h-6" /></button>
             </div>
+            
+            <button onClick={wipeData} className="mt-12 text-xs opacity-20 hover:opacity-100 flex items-center gap-2"><Trash2 className="w-3 h-3" /> Reset App Data</button>
         </div>
     );
   }
@@ -454,6 +465,13 @@ const App = () => {
         </div>
     );
   }
+
+  // Helper to safely get list
+  const activeWorkoutList = (customWorkouts[weekdayName]?.list && Array.isArray(customWorkouts[weekdayName].list)) 
+    ? customWorkouts[weekdayName].list 
+    : defaultWorkoutConfig[weekdayName].list;
+
+  const currentWorkoutTitle = customWorkouts[weekdayName]?.title || defaultWorkoutConfig[weekdayName].title;
 
   return (
     <div className={`min-h-screen theme-${theme} transition-colors duration-500`}>
@@ -603,8 +621,8 @@ const App = () => {
                                         <div className="flex items-center gap-6 flex-1">
                                             {isEditMode ? (
                                                 <>
-                                                    <input type="text" value={item.t} onChange={(e) => updateSchedule(si, ii, 't', e.target.value)} className="bg-white/10 border border-white/10 rounded px-2 py-1 mono text-[10px] w-16" />
-                                                    <input type="text" value={item.n} onChange={(e) => updateSchedule(si, ii, 'n', e.target.value)} className="bg-white/10 border border-white/10 rounded px-2 py-1 text-sm font-bold w-full" />
+                                                    <input type="text" value={item.t || ''} onChange={(e) => updateSchedule(si, ii, 't', e.target.value)} className="bg-white/10 border border-white/10 rounded px-2 py-1 mono text-[10px] w-16" />
+                                                    <input type="text" value={item.n || ''} onChange={(e) => updateSchedule(si, ii, 'n', e.target.value)} className="bg-white/10 border border-white/10 rounded px-2 py-1 text-sm font-bold w-full" />
                                                 </>
                                             ) : (
                                                 <>
@@ -628,21 +646,21 @@ const App = () => {
                         <div className="flex items-center gap-4">
                             <Dumbbell className="text-amber-400 w-5 h-5" />
                             {isEditMode ? (
-                                <input type="text" value={customWorkouts[weekdayName]?.title || defaultWorkoutConfig[weekdayName].title} onChange={(e) => { const up = { ...customWorkouts, [weekdayName]: { ...(customWorkouts[weekdayName] || defaultWorkoutConfig[weekdayName]), title: e.target.value } }; setCustomWorkouts(up); saveData({ customWorkouts: up }); }} className="bg-white/10 border border-white/10 rounded px-3 py-1 cinzel font-black text-sm uppercase tracking-widest w-full" />
-                            ) : <h3 className="cinzel font-black text-sm uppercase tracking-widest italic opacity-80">{(customWorkouts[weekdayName]?.title || defaultWorkoutConfig[weekdayName].title)}</h3>}
+                                <input type="text" value={currentWorkoutTitle || ''} onChange={(e) => { const up = { ...customWorkouts, [weekdayName]: { ...(customWorkouts[weekdayName] || defaultWorkoutConfig[weekdayName]), title: e.target.value } }; setCustomWorkouts(up); saveData({ customWorkouts: up }); }} className="bg-white/10 border border-white/10 rounded px-3 py-1 cinzel font-black text-sm uppercase tracking-widest w-full" />
+                            ) : <h3 className="cinzel font-black text-sm uppercase tracking-widest italic opacity-80">{currentWorkoutTitle}</h3>}
                         </div>
                         {!isEditMode && <button onClick={(e) => { e.stopPropagation(); setIsWorkoutExpanded(!isWorkoutExpanded); }} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-40"><ChevronDown className={`w-5 h-5 transition-transform ${isWorkoutExpanded ? 'rotate-180' : ''}`} /></button>}
                     </div>
                     {(isWorkoutExpanded || isEditMode) ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                            {(customWorkouts[weekdayName]?.list || defaultWorkoutConfig[weekdayName].list).map((ex, i) => {
+                            {activeWorkoutList.map((ex, i) => {
                                 const key = `${activeDate}-workout-${i}`;
                                 const isWorkoutDone = !!completedWorkouts[key];
                                 return (
                                     <div key={i} onClick={() => toggleWorkoutItem(i)} className={`flex items-center justify-between p-5 rounded-3xl border transition-all ${isWorkoutDone ? 'bg-emerald-500/10 border-emerald-500/20 opacity-40' : 'bg-white/5 border-white/10'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active-tap'}`}>
                                         <div className="flex items-center gap-4 flex-1">
                                             <div className="w-6 h-6 rounded-lg bg-amber-400/10 text-amber-400 flex items-center justify-center text-[9px] font-black">{i+1}</div>
-                                            {isEditMode ? <input type="text" value={ex} onChange={(e) => updateWorkout(i, e.target.value)} className="bg-transparent text-[11px] font-bold w-full" /> : <span className={`text-[11px] font-bold opacity-70 ${isWorkoutDone ? 'line-through' : ''}`}>{ex}</span>}
+                                            {isEditMode ? <input type="text" value={ex || ''} onChange={(e) => updateWorkout(i, e.target.value)} className="bg-transparent text-[11px] font-bold w-full" /> : <span className={`text-[11px] font-bold opacity-70 ${isWorkoutDone ? 'line-through' : ''}`}>{ex}</span>}
                                         </div>
                                         {!isEditMode && <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${isWorkoutDone ? 'bg-emerald-500 border-emerald-500' : 'border-white/10'}`}>{isWorkoutDone && <Check className="text-white w-3 h-3" />}</div>}
                                     </div>
