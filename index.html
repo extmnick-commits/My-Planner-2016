@@ -289,8 +289,11 @@
                     system = "Executive coach.";
                 } else if (type === 'spanish') {
                     setAiSpanish({ loading: true });
-                    prompt = `Spanish phrase. JSON: {"phrase": "Spanish", "trans": "English", "usage": "Context"}`;
-                    system = "Spanish tutor.";
+                    const modeContext = spanishMode === 'religious' 
+                        ? "Catholic/religious spiritual phrase" 
+                        : "useful intermediate Mexican Spanish idiom or conversational phrase (not just a single word)";
+                    prompt = `Provide a ${modeContext}. JSON: {"phrase": "Spanish text", "trans": "English translation", "usage": "Brief usage context"}`;
+                    system = "You are a native Spanish tutor specializing in practical, daily conversation.";
                 }
 
                 const res = await callLMStudio(prompt, system);
@@ -539,7 +542,7 @@
                             <div>
                                 <div className="flex justify-between items-center mb-6">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 cinzel">Catholic Devotional</span>
-                                    <button onClick={() => handleGenerateNow('devotional')} className="text-indigo-300 hover:text-indigo-600"><Icon name="bolt" className="text-xs" /></button>
+                                    <button onClick={() => handleGenerateNow('devotional')} className="text-indigo-300 hover:text-indigo-600 w-8 h-8 flex items-center justify-center bg-indigo-50 rounded-full active-tap"><Icon name="bolt" className="text-lg" /></button>
                                 </div>
                                 {aiDevotional?.loading ? (
                                     <p className="text-xs animate-pulse italic text-indigo-400">Seeking divine inspiration...</p>
@@ -557,7 +560,7 @@
                             <div>
                                 <div className="flex justify-between items-center mb-6">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 cinzel">Executive Tip</span>
-                                    <button onClick={() => handleGenerateNow('business')} className="text-blue-300 hover:text-blue-600"><Icon name="bolt" className="text-xs" /></button>
+                                    <button onClick={() => handleGenerateNow('business')} className="text-blue-300 hover:text-blue-600 w-8 h-8 flex items-center justify-center bg-blue-50 rounded-full active-tap"><Icon name="bolt" className="text-lg" /></button>
                                 </div>
                                 {aiBusiness?.loading ? (
                                     <p className="text-xs animate-pulse italic text-blue-400">Strategizing legacy...</p>
@@ -575,9 +578,9 @@
                             <div>
                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 cinzel">Spanish Study</span>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 items-center">
                                         <button onClick={() => setShowSavedSpanish(!showSavedSpanish)} className="text-emerald-300 hover:text-emerald-600"><Icon name="list" className="text-xs" /></button>
-                                        <button onClick={() => handleGenerateNow('spanish')} className="text-emerald-300 hover:text-emerald-600"><Icon name="bolt" className="text-xs" /></button>
+                                        <button onClick={() => handleGenerateNow('spanish')} className="text-emerald-300 hover:text-emerald-600 w-8 h-8 flex items-center justify-center bg-emerald-50 rounded-full active-tap"><Icon name="bolt" className="text-lg" /></button>
                                     </div>
                                 </div>
                                 {!showSavedSpanish ? (
